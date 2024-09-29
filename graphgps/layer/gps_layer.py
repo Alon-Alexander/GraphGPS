@@ -3,14 +3,18 @@ import torch
 import torch.nn as nn
 import torch_geometric.graphgym.register as register
 import torch_geometric.nn as pygnn
-from performer_pytorch import SelfAttention
+# from performer_pytorch import SelfAttention
 from torch_geometric.data import Batch
 from torch_geometric.nn import Linear as Linear_pyg
 from torch_geometric.utils import to_dense_batch
 
-from graphgps.layer.bigbird_layer import SingleBigBirdLayer
-from graphgps.layer.gatedgcn_layer import GatedGCNLayer
-from graphgps.layer.gine_conv_layer import GINEConvESLapPE
+from bigbird_layer import SingleBigBirdLayer
+from gatedgcn_layer import GatedGCNLayer
+from gine_conv_layer import GINEConvESLapPE
+from custom_attention import CustomAttention
+# from graphgps.layer.bigbird_layer import SingleBigBirdLayer
+# from graphgps.layer.gatedgcn_layer import GatedGCNLayer
+# from graphgps.layer.gine_conv_layer import GINEConvESLapPE
 
 
 class GPSLayer(nn.Module):
@@ -109,6 +113,7 @@ class GPSLayer(nn.Module):
             #     dim_feedforward=2048, dropout=0.1, activation=F.relu,
             #     layer_norm_eps=1e-5, batch_first=True)
         elif global_model_type == 'Performer':
+            raise ValueError("Alon's error - didn't install requirements")
             self.self_attn = SelfAttention(
                 dim=dim_h, heads=num_heads,
                 dropout=self.attn_dropout, causal=False)
@@ -117,6 +122,12 @@ class GPSLayer(nn.Module):
             bigbird_cfg.n_heads = num_heads
             bigbird_cfg.dropout = dropout
             self.self_attn = SingleBigBirdLayer(bigbird_cfg)
+        elif global_model_type == 'CustomAttention':
+            self.self_attn = CustomAttention(
+                dim_h=dim_h,
+                num_heads=num_heads,
+                attn_dropout=self.attn_dropout,
+            )
         else:
             raise ValueError(f"Unsupported global x-former model: "
                              f"{global_model_type}")
@@ -206,6 +217,8 @@ class GPSLayer(nn.Module):
                 h_attn = self.self_attn(h_dense, mask=mask)[mask]
             elif self.global_model_type == 'BigBird':
                 h_attn = self.self_attn(h_dense, attention_mask=mask)
+            elif self.global_model_type == 'CustomAttention':
+                h_attn = self.self_attn(h_dense, None, ~mask)[mask]
             else:
                 raise RuntimeError(f"Unexpected {self.global_model_type}")
 
