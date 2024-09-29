@@ -17,41 +17,37 @@ class CustomAttention(nn.Module):
             dim_h, num_heads, dropout=attn_dropout, batch_first=True)
     
     def forward(self, batch):
-        h = batch.x
-        print(batch)
-        print(h.shape)
+        # Transform to networkx graph
         G = to_networkx(batch, node_attrs=['x', 'batch'])
-        print(G)
 
+        # Separate into communities
         coms = algorithms.walktrap(G)
 
         for community in coms.communities:
             subgraph = G.subgraph(community)
 
+            # Calculate attention inside community subgraph
             torch_subgraph = from_networkx(subgraph)
-            # print(torch_subgraph)
+            dense_subgraph, dense_mask = to_dense_batch(
+                torch_subgraph.x, 
+                torch_subgraph.batch
+                )
+            torch_subgraph.x = self.attn.forward(
+                dense_subgraph, dense_subgraph, dense_subgraph, 
+                attn_mask=None, 
+                key_padding_mask=~dense_mask, 
+                need_weights=False,
+            )[0][dense_mask]
 
-            # torch_subgraph.x *= 2
-
+            # Copy data back to networkx graph from community
             for i, node in enumerate(subgraph.nodes):
-                if G.nodes[node]['x'] != torch_subgraph.x[i].tolist():
-                    print("HAHAHA", i, node)
                 G.nodes[node]['x'] = torch_subgraph.x[i].tolist()
 
         data_after_communities = from_networkx(G)
 
-        print("After")
-        print(data_after_communities)
-        print(torch.equal(data_after_communities.batch, batch.batch))
-        print(torch.equal(data_after_communities.x, batch.x))
-
-        h_dense, mask = to_dense_batch(
-            data_after_communities.x, 
-            data_after_communities.batch,
-            )
-        
-        return self.attn.forward(h_dense, h_dense, h_dense, 
-                                 attn_mask=None, 
-                                 key_padding_mask=~mask, 
-                                 need_weights=False,
-                                 )[0][mask]
+        return data_after_communities.x
+        # return self.attn.forward(h_dense, h_dense, h_dense, 
+        #                          attn_mask=None, 
+        #                          key_padding_mask=~mask, 
+        #                          need_weights=False,
+        #                          )[0][mask]
