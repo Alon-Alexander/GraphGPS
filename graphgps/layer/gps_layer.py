@@ -218,7 +218,7 @@ class GPSLayer(nn.Module):
             elif self.global_model_type == 'BigBird':
                 h_attn = self.self_attn(h_dense, attention_mask=mask)
             elif self.global_model_type == 'CustomAttention':
-                h_attn = self.self_attn(h_dense, None, ~mask)[mask]
+                h_attn = self.self_attn(batch)
             else:
                 raise RuntimeError(f"Unexpected {self.global_model_type}")
 
