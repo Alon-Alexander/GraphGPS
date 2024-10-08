@@ -81,22 +81,50 @@ class GPSModel(torch.nn.Module):
         except:
             raise ValueError(f"Unexpected layer type: {cfg.gt.layer_type}")
         layers = []
-        for _ in range(cfg.gt.layers):
-            layers.append(GPSLayer(
-                dim_h=cfg.gt.dim_hidden,
-                local_gnn_type=local_gnn_type,
-                global_model_type=global_model_type,
-                num_heads=cfg.gt.n_heads,
-                act=cfg.gnn.act,
-                pna_degrees=cfg.gt.pna_degrees,
-                equivstable_pe=cfg.posenc_EquivStableLapPE.enable,
-                dropout=cfg.gt.dropout,
-                attn_dropout=cfg.gt.attn_dropout,
-                layer_norm=cfg.gt.layer_norm,
-                batch_norm=cfg.gt.batch_norm,
-                bigbird_cfg=cfg.gt.bigbird,
-                log_attn_weights=cfg.train.mode == 'log-attn-weights',
-            ))
+
+        # Change the architecture every layer
+        if hasattr(cfg.gt, "gps_layer_composition"):
+            for layer_attributes in cfg.gt.gps_layer_composition:
+                has_local = layer_attributes.has_local
+                has_global = layer_attributes.has_global
+                
+                layer_local_gnn_type = local_gnn_type if has_local else "None"
+                layer_global_model_type = global_model_type if has_global else "None"
+
+                layers.append(GPSLayer(
+                    dim_h=cfg.gt.dim_hidden,
+                    local_gnn_type=layer_local_gnn_type,
+                    global_model_type=layer_global_model_type,
+                    num_heads=cfg.gt.n_heads,
+                    act=cfg.gnn.act,
+                    pna_degrees=cfg.gt.pna_degrees,
+                    equivstable_pe=cfg.posenc_EquivStableLapPE.enable,
+                    dropout=cfg.gt.dropout,
+                    attn_dropout=cfg.gt.attn_dropout,
+                    layer_norm=cfg.gt.layer_norm,
+                    batch_norm=cfg.gt.batch_norm,
+                    bigbird_cfg=cfg.gt.bigbird,
+                    log_attn_weights=cfg.train.mode == 'log-attn-weights',
+                ))
+
+        # Simple layering (all layers are the same)
+        else:
+            for _ in range(cfg.gt.layers):
+                layers.append(GPSLayer(
+                    dim_h=cfg.gt.dim_hidden,
+                    local_gnn_type=local_gnn_type,
+                    global_model_type=global_model_type,
+                    num_heads=cfg.gt.n_heads,
+                    act=cfg.gnn.act,
+                    pna_degrees=cfg.gt.pna_degrees,
+                    equivstable_pe=cfg.posenc_EquivStableLapPE.enable,
+                    dropout=cfg.gt.dropout,
+                    attn_dropout=cfg.gt.attn_dropout,
+                    layer_norm=cfg.gt.layer_norm,
+                    batch_norm=cfg.gt.batch_norm,
+                    bigbird_cfg=cfg.gt.bigbird,
+                    log_attn_weights=cfg.train.mode == 'log-attn-weights',
+                ))
         self.layers = torch.nn.Sequential(*layers)
 
         GNNHead = register.head_dict[cfg.gnn.head]
