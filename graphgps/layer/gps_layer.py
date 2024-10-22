@@ -8,13 +8,13 @@ from torch_geometric.data import Batch
 from torch_geometric.nn import Linear as Linear_pyg
 from torch_geometric.utils import to_dense_batch
 
-from bigbird_layer import SingleBigBirdLayer
-from gatedgcn_layer import GatedGCNLayer
-from gine_conv_layer import GINEConvESLapPE
-from custom_attention import CustomAttention
-# from graphgps.layer.bigbird_layer import SingleBigBirdLayer
-# from graphgps.layer.gatedgcn_layer import GatedGCNLayer
-# from graphgps.layer.gine_conv_layer import GINEConvESLapPE
+# from bigbird_layer import SingleBigBirdLayer
+# from gatedgcn_layer import GatedGCNLayer
+# from gine_conv_layer import GINEConvESLapPE
+# from custom_attention import CustomAttention
+from graphgps.layer.bigbird_layer import SingleBigBirdLayer
+from graphgps.layer.gatedgcn_layer import GatedGCNLayer
+from graphgps.layer.gine_conv_layer import GINEConvESLapPE
 
 
 class GPSLayer(nn.Module):

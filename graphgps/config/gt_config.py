@@ -19,6 +19,8 @@ def set_cfg_gt(cfg):
     # Number of Transformer layers in the model
     cfg.gt.layers = 3
 
+    cfg.gt.gps_layer_composition = None
+
     # Number of attention heads in the Graph Transformer
     cfg.gt.n_heads = 8
 

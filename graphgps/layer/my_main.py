@@ -1,3 +1,4 @@
+"""
 import gps_layer
 from torch_geometric.datasets import TUDataset
 from torch_geometric.loader import DataLoader
@@ -27,4 +28,4 @@ if __name__ == '__main__':
         if i == 0:
             break
 
-
+"""

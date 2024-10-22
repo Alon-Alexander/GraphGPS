@@ -83,11 +83,14 @@ class GPSModel(torch.nn.Module):
         layers = []
 
         # Change the architecture every layer
-        if hasattr(cfg.gt, "gps_layer_composition"):
+        if hasattr(cfg.gt, "gps_layer_composition") and cfg.gt.gps_layer_composition is not None:
             for layer_attributes in cfg.gt.gps_layer_composition:
-                has_local = layer_attributes.has_local
-                has_global = layer_attributes.has_global
-                
+                has_local = layer_attributes["has_local"]
+                has_global = layer_attributes["has_global"]
+
+                print(f"{has_local = }")
+                print(f"{has_global = }")
+
                 layer_local_gnn_type = local_gnn_type if has_local else "None"
                 layer_global_model_type = global_model_type if has_global else "None"
 
