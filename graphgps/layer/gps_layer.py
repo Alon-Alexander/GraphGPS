@@ -12,6 +12,27 @@ from graphgps.layer.bigbird_layer import SingleBigBirdLayer
 from graphgps.layer.gatedgcn_layer import GatedGCNLayer
 from graphgps.layer.gine_conv_layer import GINEConvESLapPE
 
+import torch
+import torch.nn as nn
+
+class Decider(nn.Module):
+    def __init__(self, input_dim, hidden_dim=64):
+        super(Decider, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, 1)
+        self.activation = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        self.register_buffer('attention_penalty', torch.tensor(0.15))
+
+    
+    def forward(self, batch):
+        batch_representation = batch.x.mean(dim=0)
+        h = self.activation(self.fc1(batch_representation))
+        decision = torch.tanh(self.fc2(h))  # Value between 0 and 1
+        penalty = self.attention_penalty * decision**2
+        return decision, penalty
+
+
 
 class GPSLayer(nn.Module):
     """Local MPNN + full graph attention x-former layer.
@@ -21,9 +42,13 @@ class GPSLayer(nn.Module):
                  local_gnn_type, global_model_type, num_heads, act='relu',
                  pna_degrees=None, equivstable_pe=False, dropout=0.0,
                  attn_dropout=0.0, layer_norm=False, batch_norm=True,
-                 bigbird_cfg=None, log_attn_weights=False):
+                 bigbird_cfg=None, log_attn_weights=False, use_decider=False):
         super().__init__()
-
+        # NOTE: added layers learnable module to decide if need global attention
+        self.use_decider = use_decider
+        if use_decider:
+            decider = Decider(input_dim=dim_h, hidden_dim=64)
+            self.decider = decider
         self.dim_h = dim_h
         self.num_heads = num_heads
         self.attn_dropout = attn_dropout
@@ -195,6 +220,15 @@ class GPSLayer(nn.Module):
             h_out_list.append(h_local)
 
         # Multi-head attention.
+        # NOTE: add the dcider:  forward: self.decider(batch)
+        if self.use_decider:
+            decision, penalty = self.decider(batch)
+        else:
+            decision = 1.0  # Use a float constant
+            penalty = 0.0
+
+        
+        #print(decision, penalty)
         if self.self_attn is not None:
             h_dense, mask = to_dense_batch(h, batch.batch)
             if self.global_model_type == 'Transformer':
@@ -210,7 +244,7 @@ class GPSLayer(nn.Module):
                 raise RuntimeError(f"Unexpected {self.global_model_type}")
 
             h_attn = self.dropout_attn(h_attn)
-            h_attn = h_in1 + h_attn  # Residual connection.
+            h_attn = h_in1 + h_attn * decision  # Residual connection.
             if self.layer_norm:
                 h_attn = self.norm1_attn(h_attn, batch.batch)
             if self.batch_norm:
@@ -229,7 +263,7 @@ class GPSLayer(nn.Module):
             h = self.norm2(h)
 
         batch.x = h
-        return batch
+        return batch, penalty
 
     def _sa_block(self, x, attn_mask, key_padding_mask):
         """Self-attention block.

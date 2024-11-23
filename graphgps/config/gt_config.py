@@ -19,6 +19,8 @@ def set_cfg_gt(cfg):
     # Number of Transformer layers in the model
     cfg.gt.layers = 3
 
+    cfg.gt.gps_layer_composition = None
+
     # Number of attention heads in the Graph Transformer
     cfg.gt.n_heads = 8
 
@@ -30,6 +32,7 @@ def set_cfg_gt(cfg):
 
     # SAN real vs fake edge attention weighting coefficient
     cfg.gt.gamma = 1e-5
+    cfg.gt.use_decider = True
 
     # Histogram of in-degrees of nodes in the training set used by PNAConv.
     # Used when `gt.layer_type: PNAConv+...`. If empty it is precomputed during

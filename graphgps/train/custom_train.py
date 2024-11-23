@@ -13,14 +13,18 @@ from graphgps.loss.subtoken_prediction_loss import subtoken_cross_entropy
 from graphgps.utils import cfg_to_dict, flatten_dict, make_wandb_name
 
 
-def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation):
+def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation, epoch=0):
     model.train()
     optimizer.zero_grad()
     time_start = time.time()
+    avg_penalty = 0.0
+
     for iter, batch in enumerate(loader):
         batch.split = 'train'
         batch.to(torch.device(cfg.accelerator))
-        pred, true = model(batch)
+        
+        pred, true, penalty = model(batch)
+        
         if cfg.dataset.name == 'ogbg-code2':
             loss, pred_score = subtoken_cross_entropy(pred, true)
             _true = true
@@ -29,7 +33,18 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation)
             loss, pred_score = compute_loss(pred, true)
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
+        
+        #penalty = penalty.view_as(loss)  # Make penalty the same shape as loss
+        loss += penalty.mean()  # Add the penalty to the loss
+        avg_penalty += penalty.mean().item()
         loss.backward()
+        for name, param in model.named_parameters():
+            if "decider" not in name:
+                continue
+            # write to a file:
+            with open('./parameter_analysis.txt', 'a') as f:
+                f.write(f"Layer: {name}\n")
+                f.write(f"Gradient norm: {param.grad.norm()}\n")
         # Parameters update after accumulating gradients for given num. batches.
         if ((iter + 1) % batch_accumulation == 0) or (iter + 1 == len(loader)):
             if cfg.optim.clip_grad_norm:
@@ -44,20 +59,26 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation)
                             time_used=time.time() - time_start,
                             params=cfg.params,
                             dataset_name=cfg.dataset.name)
-        time_start = time.time()
+                # Add a notification after the backward step
+                      # print all parameters
+
+    with open('./analisys.txt', 'a') as f:
+        f.write(f'{epoch} - Penalty: {avg_penalty}, {len(loader)}\n')
+    time_start = time.time()
 
 
 @torch.no_grad()
 def eval_epoch(logger, loader, model, split='val'):
     model.eval()
     time_start = time.time()
+    total_used_attention = 0
     for batch in loader:
         batch.split = split
         batch.to(torch.device(cfg.accelerator))
         if cfg.gnn.head == 'inductive_edge':
             pred, true, extra_stats = model(batch)
         else:
-            pred, true = model(batch)
+            pred, true, penalty = model(batch)
             extra_stats = {}
         if cfg.dataset.name == 'ogbg-code2':
             loss, pred_score = subtoken_cross_entropy(pred, true)
@@ -75,6 +96,7 @@ def eval_epoch(logger, loader, model, split='val'):
                             dataset_name=cfg.dataset.name,
                             **extra_stats)
         time_start = time.time()
+    print(f"Total used attention: {total_used_attention/len(loader)}")
 
 
 @register_train('custom')
@@ -119,7 +141,7 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
     for cur_epoch in range(start_epoch, cfg.optim.max_epoch):
         start_time = time.perf_counter()
         train_epoch(loggers[0], loaders[0], model, optimizer, scheduler,
-                    cfg.optim.batch_accumulation)
+                    cfg.optim.batch_accumulation, cur_epoch)
         perf[0].append(loggers[0].write_epoch(cur_epoch))
 
         if is_eval_epoch(cur_epoch):
@@ -191,6 +213,10 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
                 f"val_loss: {perf[1][best_epoch]['loss']:.4f} {best_val}\t"
                 f"test_loss: {perf[2][best_epoch]['loss']:.4f} {best_test}"
             )
+            # how many attention has been used
+            logging.info(f"Attention used: {model.model.attention_tracker}")
+            # zero out the attention tracker for the next epoch
+            model.model.attention_tracker = [0] * len(model.model.attention_tracker)
             if hasattr(model, 'trf_layers'):
                 # Log SAN's gamma parameter values if they are trainable.
                 for li, gtl in enumerate(model.trf_layers):

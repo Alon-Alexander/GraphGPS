@@ -96,13 +96,36 @@ class GPSModel(torch.nn.Module):
                 batch_norm=cfg.gt.batch_norm,
                 bigbird_cfg=cfg.gt.bigbird,
                 log_attn_weights=cfg.train.mode == 'log-attn-weights',
+                use_decider=cfg.gt.use_decider,
             ))
         self.layers = torch.nn.Sequential(*layers)
+        num_layers = len(layers)
+        self.attention_tracker = [0] * num_layers
 
         GNNHead = register.head_dict[cfg.gnn.head]
         self.post_mp = GNNHead(dim_in=cfg.gnn.dim_inner, dim_out=dim_out)
-
+    '''
     def forward(self, batch):
         for module in self.children():
             batch = module(batch)
         return batch
+    '''
+    def forward(self, batch):
+        total_penalty = 0.0  
+        layer_index = 0  
+        
+        for module in self.children():
+            if isinstance(module, torch.nn.Sequential): 
+                for layer in module:
+                    batch, penalty = layer(batch)  
+                    total_penalty += penalty      
+                    if penalty > 0:  
+                        self.attention_tracker[layer_index] += 1
+                    layer_index += 1  # Increment the index for each layer
+            elif module == self.post_mp:
+                pred, true = module(batch) 
+            else:
+                batch = module(batch)
+
+        return pred, true, total_penalty
+
